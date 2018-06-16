@@ -1,0 +1,136 @@
+var Web3 = require('web3');
+var web3 = new Web3(new Web3.providers.WebsocketProvider("ws://52.77.0.142:8546"));
+
+
+
+
+ var mycontract = new web3.eth.Contract(abi1(),"0x86d105d5fa67f3eef986f75b7e63c6664f88319a");
+ var pg = require('pg');
+ var conString = "tcp://postgres:etz.123456@localhost/blockoptions";
+ var client =  new pg.Client(conString);
+
+var count=1;
+//var address = "0x9B5d4472ea7B03a47604A71b62238600Db06fb9c";
+//actions();
+//sql语句
+var currentWorking=0
+var arrays=[];
+selectSQLString = "select useretz.id as userid,etzrecor.id as recommid,useretz.receive_address as address from etz_userinfo as useretz ,etz_recommend_record as etzrecor where useretz.receive_address=etzrecor.phone_address and useretz.invite_code=etzrecor.invite_code and etzrecor.status='已激活' and etzrecor.type='个人奖励' and etzrecor.sended='1' and useretz.sended='1' order by etzrecor.id asc limit 2950";
+//客户端连接，进行数据插入
+  client.connect(function(error, results){
+    if (error) {
+      console.log('clientConnectionReady Error:'+error.message);
+      client.end();
+      return;
+    }
+    console.log('connection success...\n');
+    console.log("event listenning...")
+    client.query(selectSQLString,function(error,results){
+      if(!error){
+        console.log("当前待发币总用户数：",results.rows.length);
+          arrays=results.rows;
+          // setInterval(function(){
+          //   var obj = arrays.pop();
+          //   console.log(obj)
+          //   console.log(arrays.length);
+          // },1000);
+          acting(arrays);
+      }
+    })
+  });
+  var addressglobal="";
+  function acting(arrays){
+    web3.eth.getTransactionCount("0x9B5d4472ea7B03a47604A71b62238600Db06fb9c").then(function(resultnone){
+      var nonce=parseInt(resultnone);
+       console.log(resultnone);
+
+       mycontract.events["Transfer"]({
+         filter: {from:"0x9B5d4472ea7B03a47604A71b62238600Db06fb9c"}
+       },(err,results)=>{
+         if (currentWorking < 1) {
+           nonce++;
+           currentWorking++
+           console.log("nonce*************:",nonce);
+           console.log("000:",results);
+           var len=arrays.length;
+           if(len>0){
+             var obj = arrays.pop();
+             console.log("obj=====:",obj);
+             console.log("当前用户数"+arrays.length);
+             if(addressglobal!=obj.address){
+               addressglobal=obj.address;
+               actions(obj,nonce);
+               // var settimes=setInterval(function(){
+               //   actions(obj,nonce);
+               //   clearInterval(settimes);
+               // },5000);
+             }else{
+               console.log("与上一个address 相同");
+               var objs=arrays.pop();
+               var settimesa=setInterval(function(){
+                 actions(objs,nonce);
+                 clearInterval(settimesa);
+               },5000);
+             }
+           }else{
+             console.log("3000用户发放完毕==================");
+           }
+         }
+
+       });
+     });
+  }
+
+  function actions(obj,resultnone){
+
+    mycontract.methods.balanceOf("0x7341b60bae20dc8F2a86D4ebd065959DD9bB5e5c").call().then(function(result){
+        console.log("当前总账户余额：",result);
+          var address = obj.address;
+      //   var address ="0x9B5d4472ea7B03a47604A71b62238600Db06fb9c";
+          var userid =obj.userid;
+          var recommid =obj.recommid;
+          var data =mycontract.methods['transfer(address,uint256)'](address,300000000000).encodeABI();
+          console.log(address);
+          console.log(userid);
+          console.log(recommid);
+          console.log(data);
+          console.log("resultnone:",resultnone);
+          web3.eth.accounts.signTransaction({
+            to: '0x86d105d5fa67f3eef986f75b7e63c6664f88319a',
+            data: data,
+            gas: 1500000,
+            nonce:resultnone,
+          },'0x99c2a90d1cc15252cf6dbbe1591155ba90c9a7c4d3bbc3aff7236c16f1e627fb',function(err,resultsss){
+            console.log("resultsss=====",resultsss);
+           web3.eth.sendSignedTransaction(resultsss.rawTransaction,function(errs12,results12){
+             if(!errs12){
+               currentWorking --
+               console.log("results12:",results12)
+               var updatesql="update etz_recommend_record set sended='2' where id ="+recommid;
+               console.log("updatesql:",updatesql);
+               client.query(updatesql,function(error,resultsq){
+                 if(!error){
+                   console.log("update data:",resultsq);
+                   client.query("update etz_userinfo set sended='2' where id ="+userid,function(erroruser,resultsuser){
+                     if(!erroruser){
+                       console.log("update etz_userinfo:",resultsuser);
+                       // mycontract.methods.balanceOf(address).call().then(function(result){
+                       //     console.log("已发账户："+address+" Bo 余额:"+result);
+                       //
+                       // });
+                     }else{
+                       console.log("erroruser:",erroruser);
+                     }
+                   })
+                 }else{
+                   console.log("error:",error);
+                 }
+               });
+             }else{
+               console.log("sendSignedTransaction1:",errs12);
+              // acting(arrays);
+             }
+           });
+         });
+    });
+  }
